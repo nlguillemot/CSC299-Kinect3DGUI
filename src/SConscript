@@ -1,0 +1,3 @@
+Import('env')
+
+env.Program(target='kinect3DGUI', source=Glob("*.cpp"))
