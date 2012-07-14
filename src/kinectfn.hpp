@@ -6,9 +6,9 @@
 namespace ng
 {
 
-void freenect_main();
+int initialize_freenect();
 
-int initialize_freenect(freenect_context** ctx, freenect_device** dev);
+void freenect_main();
 
 }
 
