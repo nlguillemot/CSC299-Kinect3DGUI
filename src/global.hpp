@@ -12,7 +12,19 @@ static const int kSCREEN_HEIGHT = 480;
 
 struct DepthBuffer
 {
-    uint16_t buf[kSCREEN_WIDTH * kSCREEN_HEIGHT * 3];
+    static const int width = kSCREEN_WIDTH;
+    static const int height = kSCREEN_HEIGHT;
+
+    /* must be the only variable in this struct,
+     * because reinterpret_cast<uint16_t*>(some_depth_buffer_ptr)
+     * must be possible.
+     */
+    uint16_t buf[width * height];
+
+    uint16_t get(int x, int y)
+    {
+        return buf[y * width + x];
+    }
 };
 
 // true if a kill signal has been received by the application
