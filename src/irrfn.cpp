@@ -47,9 +47,9 @@ static void draw_axis(irr::video::IVideoDriver* driver)
 	}
 }
 
-// returns the average depth in 3D after a lowpass filter has been applied to it.
+// returns the average depth in 3D after a bandpass filter has been applied to it.
 // coordinates are flipped horizontally and vertically
-static core::vector3df lowpass_average_depth_position(DepthBuffer* d, uint16_t upper_bound)
+static core::vector3df average_depth_position(DepthBuffer* d, float lower_bound, float upper_bound)
 {
     core::vector3df sumv;
     int count = 0;
@@ -58,9 +58,10 @@ static core::vector3df lowpass_average_depth_position(DepthBuffer* d, uint16_t u
     {
         for (int x = 0; x < d->width; ++x)
         {
-            if (d->get(x,y) < upper_bound)
+            float value = d->get(x,y);
+            if (value >= lower_bound && value <= upper_bound)
             {
-                sumv += core::vector3df(d->width - x, d->height - y, d->get(x, y));
+                sumv += core::vector3df(d->width - x, d->height - y, value);
                 ++count;
             }
         }
@@ -72,6 +73,40 @@ static core::vector3df lowpass_average_depth_position(DepthBuffer* d, uint16_t u
     }
 
     return sumv;
+}
+
+static core::vector3df nearest_depth_position(DepthBuffer* d)
+{
+    core::vector3df nearest(0,0,FREENECT_DEPTH_RAW_NO_VALUE);
+
+    for (int y = 0; y < d->height; ++y)
+    {
+        for (int x = 0; x < d->width; ++x)
+        {
+            float value = d->get(x,y);
+            if (value < nearest.Z)
+            {
+                nearest = core::vector3df(d->width - x, d->height - y,value);
+            }
+        }
+    }
+
+    return nearest;
+}
+
+static void draw_depth_buffer(video::IVideoDriver* drv, DepthBuffer* d, const video::SColor& c, float lower_bound, float upper_bound)
+{
+    for (int y = 0; y < d->height; ++y)
+    {
+        for (int x = 0; x < d->width; ++x)
+        {
+            float value = d->get(x,y);
+            if (value >= lower_bound && value <= upper_bound)
+            {
+                drv->drawPixel(d->width - x, y, c);
+            }
+        }
+    }
 }
 
 template<class T, class K>
@@ -92,12 +127,23 @@ void irr_main()
     core::aabbox3df hand_box(-10, -10, -10, 10, 10, 10);
     video::SColor hand_color(255, 255, 0, 0);
 
-    scene::ICameraSceneNode* cam = smgr->addCameraSceneNode(0, core::vector3df(kSCREEN_WIDTH/2, kSCREEN_HEIGHT/2,0), core::vector3df(kSCREEN_WIDTH/2, kSCREEN_HEIGHT/2, 1));
+    // hand is always tweened toward this point
+    core::vector3df hand_target_pos(0,0,FREENECT_DEPTH_RAW_NO_VALUE);
+
+    // world units per second
+    float hand_tween_speed = 12.0f;
 
     // map 3D space to freenect depth space
+    scene::ICameraSceneNode* cam = smgr->addCameraSceneNode(0, core::vector3df(kSCREEN_WIDTH/2, kSCREEN_HEIGHT/2,0), core::vector3df(kSCREEN_WIDTH/2, kSCREEN_HEIGHT/2, 1));
     core::matrix4 proj;
     proj.buildProjectionMatrixOrthoLH(kSCREEN_WIDTH, kSCREEN_HEIGHT, 0, FREENECT_DEPTH_RAW_MAX_VALUE);
     cam->setProjectionMatrix(proj, true);
+
+    // bounds for depth filtering
+    float lower_bound = 500, upper_bound = 800;
+
+    // time stuff
+    u32 now = 0, then = 0;
 
     while (!g_die)
     {
@@ -114,30 +160,49 @@ void irr_main()
 
             if (!bufs.empty())
             {
-                // extract position of hand from most recent depth buffer
-                // TODO: Make magic number calibrate itself automatically
-                core::vector3df avg_point = lowpass_average_depth_position(bufs.back(), 700);
+                // extract position of hand from most recent depth buffer and lead the cursor to it
+                core::vector3df next_hand_target_pos = nearest_depth_position(bufs.back());
 
-                if (avg_point != core::vector3df(0,0,0))
+                if (next_hand_target_pos.Z != FREENECT_DEPTH_RAW_NO_VALUE)
                 {
-                    set_aabbox_centre(hand_box, avg_point);
+                    // if the target position has not yet been initialized, just snap to it.
+                    if (hand_target_pos.Z == FREENECT_DEPTH_RAW_NO_VALUE)
+                    {
+                        set_aabbox_centre(hand_box, next_hand_target_pos);
+                    }
+
+                    hand_target_pos = next_hand_target_pos;
                     hand_color.set(255, 0, 255, 0);
                 }
                 else
                 {
                     hand_color.set(255, 255, 0, 0);
                 }
-
-                printf("aabbox position: { %f, %f, %f }\n", avg_point.X, avg_point.Y, avg_point.Z);
-
-                // Throw all collected buffers back in the pool
-                g_depth_buffer_pool.lock();
-                for (DepthBuffer* b : bufs)
-                {
-                    g_depth_buffer_pool.deallocate(b);
-                }
-                g_depth_buffer_pool.unlock();
             }
+
+            // update delta time
+            now = device->getTimer()->getTime();
+            u32 dt = now - then;
+            then = now;
+
+            // update hand position
+            core::vector3df hand_distance_to_target = hand_target_pos - hand_box.getCenter();
+
+            core::vector3df delta_hand_position = hand_distance_to_target;
+            delta_hand_position.normalize();
+            delta_hand_position *= hand_tween_speed;
+            delta_hand_position * (dt/1000.0);
+
+            // prevent jittery movement near target position
+            if (delta_hand_position.getLengthSQ() < hand_distance_to_target.getLengthSQ())
+            {
+                set_aabbox_centre(hand_box, hand_box.getCenter() + delta_hand_position);
+            }
+            else
+            {
+                set_aabbox_centre(hand_box, hand_target_pos);
+            }
+
 
             // Render scene
             if (device->isWindowActive())
@@ -152,12 +217,25 @@ void irr_main()
                 // draw hand
                 driver->draw3DBox(hand_box, hand_color);
 
+                if (!bufs.empty())
+                {
+                    draw_depth_buffer(driver, bufs.back(), video::SColor(255,0,0,255), lower_bound, upper_bound);
+                }
+
                 driver->endScene();
             }
             else
             {
                 device->yield();
             }
+
+            // Throw all collected buffers back in the pool
+            g_depth_buffer_pool.lock();
+            for (DepthBuffer* b : bufs)
+            {
+                g_depth_buffer_pool.deallocate(b);
+            }
+            g_depth_buffer_pool.unlock();
         }
         else
         {
