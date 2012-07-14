@@ -11,5 +11,8 @@
 *.la
 *.a
 
-# Ignore scons temporaries
+# scons temporaries
 *.dblite
+
+# build folder
+build/
