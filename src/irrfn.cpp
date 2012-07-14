@@ -17,7 +17,38 @@ void initialize_irrlicht()
     device->setWindowCaption(L"CSC299-Kinect3DGUI");
 }
 
+// draws red green blue arrows to help know how the X Y Z coordinates work
+static void draw_axis(irr::video::IVideoDriver* driver)
+{
+	using namespace irr;
+
+	const float axisLength = 10.0f;
+	const core::vector3df center(0.0f);
+	const core::vector3df arrows[] = {
+		center + core::vector3df(axisLength, 0.0f, 0.0f),
+		center + core::vector3df(0.0f, axisLength, 0.0f),
+		center + core::vector3df(0.0f, 0.0f, axisLength)
+	};
+	const video::SColor arrow_colors[] = {
+		video::SColor(255, 255,   0,   0),
+		video::SColor(255,   0, 255,   0),
+		video::SColor(255,   0,   0, 255)
+	};
+	
+	video::SMaterial material;
+	material.Lighting = false;
+	driver->setMaterial(material);
+	driver->setTransform(video::ETS_WORLD, core::IdentityMatrix);
+
+	driver->draw3DBox( core::aabbox3df(0.0f,0.0f,0.0f,10.0f,10.0f,10.0f) , video::SColor(255, 255, 255, 255) );
+	for (unsigned i = 0; i < sizeof(arrows)/sizeof(*arrows); ++i)
+	{
+		driver->draw3DLine(center, arrows[i], arrow_colors[i % (sizeof(arrow_colors)/(sizeof(*arrow_colors)))]);
+	}
+}
+
 // returns the average depth in 3D after a lowpass filter has been applied to it.
+// coordinates are flipped horizontally and vertically
 static core::vector3df lowpass_average_depth_position(DepthBuffer* d, uint16_t upper_bound)
 {
     core::vector3df sumv;
@@ -29,7 +60,7 @@ static core::vector3df lowpass_average_depth_position(DepthBuffer* d, uint16_t u
         {
             if (d->get(x,y) < upper_bound)
             {
-                sumv += core::vector3df(x, y, d->get(x, y));
+                sumv += core::vector3df(d->width - x, d->height - y, d->get(x, y));
                 ++count;
             }
         }
@@ -58,7 +89,15 @@ void irr_main()
     gui::IGUIEnvironment* guienv = device->getGUIEnvironment();
 
     // represents location of hand in 3D space
-    core::aabbox3df hand_box;
+    core::aabbox3df hand_box(-10, -10, -10, 10, 10, 10);
+    video::SColor hand_color(255, 255, 0, 0);
+
+    scene::ICameraSceneNode* cam = smgr->addCameraSceneNode(0, core::vector3df(kSCREEN_WIDTH/2, kSCREEN_HEIGHT/2,0), core::vector3df(kSCREEN_WIDTH/2, kSCREEN_HEIGHT/2, 1));
+
+    // map 3D space to freenect depth space
+    core::matrix4 proj;
+    proj.buildProjectionMatrixOrthoLH(kSCREEN_WIDTH, kSCREEN_HEIGHT, 0, FREENECT_DEPTH_RAW_MAX_VALUE);
+    cam->setProjectionMatrix(proj, true);
 
     while (!g_die)
     {
@@ -78,7 +117,16 @@ void irr_main()
                 // extract position of hand from most recent depth buffer
                 // TODO: Make magic number calibrate itself automatically
                 core::vector3df avg_point = lowpass_average_depth_position(bufs.back(), 700);
-                set_aabbox_centre(hand_box, avg_point);
+
+                if (avg_point != core::vector3df(0,0,0))
+                {
+                    set_aabbox_centre(hand_box, avg_point);
+                    hand_color.set(255, 0, 255, 0);
+                }
+                else
+                {
+                    hand_color.set(255, 255, 0, 0);
+                }
 
                 printf("aabbox position: { %f, %f, %f }\n", avg_point.X, avg_point.Y, avg_point.Z);
 
@@ -99,8 +147,10 @@ void irr_main()
                 smgr->drawAll();
                 guienv->drawAll();
 
+                draw_axis(driver);
+
                 // draw hand
-                driver->draw3DBox(hand_box, video::SColor(255, 255, 0, 0));
+                driver->draw3DBox(hand_box, hand_color);
 
                 driver->endScene();
             }
