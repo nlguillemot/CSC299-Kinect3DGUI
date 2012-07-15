@@ -11,10 +11,17 @@ namespace ng
 
 static IrrlichtDevice* device;
 
-void initialize_irrlicht()
+int initialize_irrlicht()
 {
     device = createDevice(video::EDT_OPENGL, core::dimension2du(kSCREEN_WIDTH, kSCREEN_HEIGHT), 16, false, false, true, 0);
+    if (!device)
+    {
+        return 1;
+    }
+
     device->setWindowCaption(L"CSC299-Kinect3DGUI");
+
+    return 0;
 }
 
 // draws red green blue arrows to help know how the X Y Z coordinates work
@@ -86,7 +93,7 @@ static core::vector3df nearest_depth_position(DepthBuffer* d)
             float value = d->get(x,y);
             if (value < nearest.Z)
             {
-                nearest = core::vector3df(d->width - x, d->height - y,value);
+                nearest = core::vector3df(d->width - x, d->height - y, value);
             }
         }
     }
@@ -167,7 +174,6 @@ scene::IMeshSceneNode* add_rectangular_prism_mesh(scene::ISceneManager* smgr, vi
     m->setBoundingBox(b->getBoundingBox());
 
     scene::IMeshSceneNode* created_node = smgr->addMeshSceneNode(m, parent);
-    created_node->setMaterialFlag(video::EMF_LIGHTING, false);
     created_node->setMaterialTexture(0, driver->getTexture(color));
 
     m->drop();
@@ -233,6 +239,17 @@ void print_aabbox(const core::aabbox3d<T>& bbox)
     printf(" }");
 }
 
+void print_color(const video::SColor& c)
+{
+    printf("ARGBu: { %u, %u, %u, %u }", c.getAlpha(), c.getRed(), c.getGreen(), c.getBlue());
+}
+
+void print_color(const video::SColorf& c)
+{
+    printf("RGBAf: { %f, %f, %f, %f }", c.getRed(), c.getGreen(), c.getBlue(), c.getAlpha());
+}
+
+// seems like there is no simpler way to change colors of things at runtime...
 void add_colors_to_irrlicht(video::IVideoDriver* driver)
 {
     using video::SColor;
@@ -292,12 +309,19 @@ void irr_main()
     cam = smgr->addCameraSceneNodeFPS();
 #endif
 
+    // bounds for depth filtering
+    float lower_bound = 500, upper_bound = 1300;
+
     core::matrix4 proj;
-    proj.buildProjectionMatrixOrthoLH(kSCREEN_WIDTH, kSCREEN_HEIGHT, 0, FREENECT_DEPTH_RAW_MAX_VALUE);
+    // proj.buildProjectionMatrixOrthoLH(kSCREEN_WIDTH, kSCREEN_HEIGHT, 0, FREENECT_DEPTH_RAW_MAX_VALUE);
+    proj.buildProjectionMatrixPerspectiveLH(kSCREEN_WIDTH, kSCREEN_HEIGHT, lower_bound, upper_bound);
     cam->setProjectionMatrix(proj, true);
 
-    // bounds for depth filtering
-    float lower_bound = 500, upper_bound = 800;
+    // add some lighting so that everything isn't just black
+    scene::ILightSceneNode* hand_light = smgr->addLightSceneNode(0, hand_box.getCenter(), video::SColorf(1.0f,1.0f,1.0f), 100);
+
+    // set ambient color to grey
+    smgr->setAmbientLight(video::SColorf(0.5, 0.5, 0.5));
 
     // initialize dialog box
     DialogBox dialog_box;
@@ -325,6 +349,8 @@ void irr_main()
             {
                 // extract position of hand from most recent depth buffer and lead the cursor to it
                 core::vector3df next_hand_target_pos = nearest_depth_position(bufs.back());
+                // when things are near the kinect, they are far away from us. need to sorta invert it to fix that.
+                next_hand_target_pos.Z = upper_bound - next_hand_target_pos.Z;
 
                 if (next_hand_target_pos.Z != FREENECT_DEPTH_RAW_NO_VALUE)
                 {
@@ -335,6 +361,10 @@ void irr_main()
                     }
 
                     hand_target_pos = next_hand_target_pos;
+                    printf("new target: ");
+                    print_vector3(hand_target_pos);
+                    printf("\n");
+
                     hand_color.set(255, 0, 255, 0);
                 }
                 else
@@ -365,6 +395,9 @@ void irr_main()
                 set_aabbox_centre(hand_box, hand_target_pos);
             }
 
+            // move light with hand
+            hand_light->setPosition(hand_box.getCenter());
+
             // check for collisions between the hand and GUI elements
             if (dialog_box.main_button->getTransformedBoundingBox().intersectsWithBox(hand_box))
             {
@@ -389,10 +422,12 @@ void irr_main()
                 // draw hand
                 driver->draw3DBox(hand_box, hand_color);
 
+/*
                 if (!bufs.empty())
                 {
                     draw_depth_buffer(driver, bufs.back(), video::SColor(255,0,0,255), lower_bound, upper_bound);
                 }
+*/
 
                 driver->endScene();
             }

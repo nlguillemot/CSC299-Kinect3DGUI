@@ -10,8 +10,14 @@ int main()
      * crashes if things are done out of order. Therefore, I suggest
      * not touching this stuff.
      */
-    ng::initialize_irrlicht();
-    ng::initialize_freenect();
+    if (ng::initialize_irrlicht())
+    {
+        return 1;
+    }
+    if (ng::initialize_freenect())
+    {
+        return 1;
+    }
 
     std::thread freenect_thread(ng::freenect_main);
     ng::irr_main();

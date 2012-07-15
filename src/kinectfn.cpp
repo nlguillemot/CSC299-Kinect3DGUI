@@ -26,7 +26,7 @@ int initialize_freenect()
     freenect_select_subdevices(freenect_ctx, (freenect_device_flags)(FREENECT_DEVICE_CAMERA));
 
     // make sure we can detect at least 1 device
-    if (freenect_num_devices(freenect_ctx) < 1)
+    if (freenect_num_devices(freenect_ctx) < 0)
     {
         freenect_shutdown(freenect_ctx);
         return 1;
@@ -58,6 +58,8 @@ void freenect_main()
 
     // close device
     freenect_close_device(freenect_dev);
+
+    freenect_shutdown(freenect_ctx);
 }
 
 void depth_callback(freenect_device* dev, void* v_depth, uint32_t timestamp)

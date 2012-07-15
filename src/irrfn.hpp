@@ -4,7 +4,7 @@
 namespace ng
 {
 
-void initialize_irrlicht();
+int initialize_irrlicht();
 
 void irr_main();
 
