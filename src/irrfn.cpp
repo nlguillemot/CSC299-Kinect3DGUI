@@ -117,6 +117,93 @@ static void set_aabbox_centre(core::aabbox3d<T>& box, const core::vector3d<K>& c
     box.MaxEdge.set(centre + (extents/2));
 }
 
+scene::IMeshSceneNode* add_rectangular_prism_mesh(scene::ISceneManager* smgr, scene::ISceneNode* parent, const core::vector3df& dim, const video::SColor& c = video::SColor(255, 255, 255, 255))
+{
+    using video::S3DVertex;
+
+/*
+   /0--------/3
+  / |       / |
+ /  |      /  |
+1---------2   |
+|  /4- - -|- -7
+| /       |  /
+|/        | /
+5---------6/
+*/
+    // TODO: Fix u,v coordinates
+    const S3DVertex verts[] = {
+        S3DVertex(0, 0, 0, -1, 1, 1, c, 0, 0),
+        S3DVertex(0, 0, dim.Z, -1, 1, -1, c, 0, 0),
+        S3DVertex(dim.X, 0, dim.Z, 1, 1, -1, c, 0, 0),
+        S3DVertex(dim.X, 0, 0, 1, 1, 1, c, 0, 0),
+        S3DVertex(0, -dim.Y, 0, 1, -1, 1, c, 0, 0),
+        S3DVertex(0, -dim.Y, dim.Z, -1, -1, -1, c, 0, 0),
+        S3DVertex(dim.X, -dim.Y, dim.Z, 1, -1, -1, c, 0, 0),
+        S3DVertex(dim.X, -dim.Y, 0, 1, -1, 1, c, 0, 0)
+    };
+
+    const u16 indices[] = {
+        0, 1, 2, // top
+        0, 2, 3, // top
+        4, 0, 3, // back
+        4, 3, 7, // back
+        3, 2, 6, // right
+        3, 6, 7, // right
+        4, 5, 1, // left
+        4, 1, 0, // left
+        1, 5, 6, // front
+        1, 6, 2, // front
+        5, 4, 7, // bottom
+        5, 7, 6,  // bottom
+    };
+
+    scene::IMeshBuffer* b = new scene::SMeshBuffer();
+    b->append(verts, sizeof(verts)/sizeof(*verts), indices, sizeof(indices)/sizeof(*indices));
+
+    scene::SMesh* m = new scene::SMesh();
+    m->addMeshBuffer(b);
+    m->setBoundingBox(b->getBoundingBox());
+
+    scene::IMeshSceneNode* created_node = smgr->addMeshSceneNode(m, parent);
+    created_node->setMaterialFlag(video::EMF_LIGHTING, false);
+
+    m->drop();
+    b->drop();
+
+    return created_node;
+}
+
+struct DialogBox
+{
+    scene::ISceneNode* root;
+    scene::IMeshSceneNode* panel;
+    scene::IMeshSceneNode* exit_button;
+    scene::IMeshSceneNode* menu_bar;
+    scene::IMeshSceneNode* main_button;
+};
+
+void hook_up_dialog_box(DialogBox* d, scene::ISceneManager* smgr)
+{
+    const float width = 200;
+    const float height = 200;
+    const float paneldepth = 20;
+    const float buttondepth = 50;
+
+    d->root = smgr->addEmptySceneNode();
+
+    d->panel = add_rectangular_prism_mesh(smgr, d->root, core::vector3df(width, height, paneldepth), video::SColor(255,255,255,255));
+
+    d->exit_button = add_rectangular_prism_mesh(smgr, d->root, core::vector3df(width/5, height/5, buttondepth), video::SColor(255,255,0,0));
+    d->exit_button->setPosition(core::vector3df(width*4/5, 0, -paneldepth));
+
+    d->menu_bar = add_rectangular_prism_mesh(smgr, d->root, core::vector3df(width*4/5, height/5, buttondepth), video::SColor(255,0,0,255));
+    d->menu_bar->setPosition(core::vector3df(0,0, -paneldepth));
+
+    d->main_button = add_rectangular_prism_mesh(smgr, d->root, core::vector3df(width*3/5, height/5, buttondepth), video::SColor(255,100,100,100));
+    d->main_button->setPosition(core::vector3df(width/5, -height*4/5, -paneldepth));
+}
+
 void irr_main()
 {
     video::IVideoDriver* driver = device->getVideoDriver();
@@ -134,13 +221,23 @@ void irr_main()
     float hand_tween_speed = 12.0f;
 
     // map 3D space to freenect depth space
-    scene::ICameraSceneNode* cam = smgr->addCameraSceneNode(0, core::vector3df(kSCREEN_WIDTH/2, kSCREEN_HEIGHT/2,0), core::vector3df(kSCREEN_WIDTH/2, kSCREEN_HEIGHT/2, 1));
+    scene::ICameraSceneNode* cam;
+#if 1
+    cam = smgr->addCameraSceneNode(0, core::vector3df(kSCREEN_WIDTH/2, kSCREEN_HEIGHT/2,0), core::vector3df(kSCREEN_WIDTH/2, kSCREEN_HEIGHT/2, 1));
+#else
+    cam = smgr->addCameraSceneNodeFPS();
+#endif
+
     core::matrix4 proj;
     proj.buildProjectionMatrixOrthoLH(kSCREEN_WIDTH, kSCREEN_HEIGHT, 0, FREENECT_DEPTH_RAW_MAX_VALUE);
     cam->setProjectionMatrix(proj, true);
 
     // bounds for depth filtering
     float lower_bound = 500, upper_bound = 800;
+
+    DialogBox dialog_box;
+    hook_up_dialog_box(&dialog_box, smgr);
+    dialog_box.root->setPosition(core::vector3df(kSCREEN_WIDTH/2,kSCREEN_HEIGHT/2,200));
 
     // time stuff
     u32 now = 0, then = 0;
