@@ -200,6 +200,22 @@ struct DialogBox
     scene::IMeshSceneNode* main_button;
 
     bool intersect_main;
+    bool intersect_exit;
+    bool hidden;
+
+    void hide()
+    {
+        panel->setVisible(false);
+        main_button->setVisible(false);
+        hidden = true;
+    }
+
+    void show()
+    {
+        panel->setVisible(true);
+        main_button->setVisible(true);
+        hidden = false;
+    }
 };
 
 core::aabbox3df get_node_bounds_recursively(scene::ISceneNode* node)
@@ -225,14 +241,17 @@ void hook_up_dialog_box(DialogBox* d, scene::ISceneManager* smgr, video::IVideoD
     d->panel = add_rectangular_prism_mesh(smgr, driver, d->root, core::vector3df(width, height, paneldepth), "white");
 
     d->exit_button = add_rectangular_prism_mesh(smgr, driver, d->root, core::vector3df(width/5, height/5, buttondepth), "red");
-    d->exit_button->setPosition(core::vector3df(width*4/5, 0, -paneldepth));
+    d->exit_button->setPosition(core::vector3df(width*4/5, 0, -buttondepth));
 
     d->menu_bar = add_rectangular_prism_mesh(smgr, driver, d->root, core::vector3df(width*4/5, height/5, buttondepth), "blue");
-    d->menu_bar->setPosition(core::vector3df(0,0, -paneldepth));
+    d->menu_bar->setPosition(core::vector3df(0,0, -buttondepth));
 
     d->main_button = add_rectangular_prism_mesh(smgr, driver, d->root, core::vector3df(width*3/5, height/5, buttondepth), "grey");
-    d->main_button->setPosition(core::vector3df(width/5, -height*4/5, -paneldepth));
+    d->main_button->setPosition(core::vector3df(width/5, -height*4/5, -buttondepth));
+
     d->intersect_main = false;
+    d->intersect_exit = false;
+    d->hidden = false;
 }
 
 template<class T>
@@ -274,6 +293,7 @@ void add_colors_to_irrlicht(video::IVideoDriver* driver)
         "black",
         "grey",
         "light_blue",
+        "dark_red",
     };
 
     SColor colors[] = {
@@ -284,6 +304,7 @@ void add_colors_to_irrlicht(video::IVideoDriver* driver)
         SColor(255,0,0,0),
         SColor(255,100,100,100),
         SColor(255,173, 216, 230),
+        SColor(255,128,0,0)
     };
 
     for (size_t i = 0; i < sizeof(colors)/sizeof(*colors); ++i)
@@ -309,7 +330,7 @@ void irr_main()
     video::SColor hand_color(255, 255, 0, 0);
 
     // hand is always tweened toward this point
-    core::vector3df hand_target_pos(0,0,FREENECT_DEPTH_RAW_NO_VALUE);
+    core::vector3df hand_target_pos(0,0,0);
 
     // world units per second
     float hand_tween_speed = 12.0f;
@@ -341,7 +362,8 @@ void irr_main()
     DialogBox dialog_box;
     hook_up_dialog_box(&dialog_box, smgr, driver);
     core::vector3df dialog_extents = get_node_bounds_recursively(dialog_box.root).getExtent();
-    dialog_box.root->setPosition(core::vector3df(kSCREEN_WIDTH/2 - dialog_extents.X/2, kSCREEN_HEIGHT/2 + dialog_extents.Y/2, upper_bound/2));
+    dialog_box.root->setPosition(core::vector3df(kSCREEN_WIDTH/2 - dialog_extents.X/2, kSCREEN_HEIGHT/2 + dialog_extents.Y/2, upper_bound*3/5));
+    dialog_box.root->setRotation(core::vector3df(0, 10, 0));
 
     // time stuff
     u32 now = 0, then = 0;
@@ -414,11 +436,12 @@ void irr_main()
             // move light with hand
             hand_light->setPosition(hand_box.getCenter());
 
-            // check for collisions between the hand and GUI elements
+            // update state of main button
             if (dialog_box.main_button->getTransformedBoundingBox().isPointTotalInside(hand_box.getCenter()))
             {
                 if (!dialog_box.intersect_main && delta_hand_position.Z > 5)
                 {
+                    // main button pressed
                     dialog_box.main_button->setMaterialTexture(0, driver->getTexture("light_blue"));
                     dialog_box.intersect_main = true;
                     sengine->play2D("data/blip.wav");
@@ -426,8 +449,36 @@ void irr_main()
             }
             else if (!dialog_box.main_button->getTransformedBoundingBox().intersectsWithBox(hand_box))
             {
+                // main button released
                 dialog_box.main_button->setMaterialTexture(0, driver->getTexture("grey"));
                 dialog_box.intersect_main = false;
+            }
+
+            // update state of exit button
+            if (dialog_box.exit_button->getTransformedBoundingBox().isPointTotalInside(hand_box.getCenter()))
+            {
+                if (!dialog_box.intersect_exit && delta_hand_position.Z > 5)
+                {
+                    // exit button pressed
+                    dialog_box.exit_button->setMaterialTexture(0, driver->getTexture("dark_red"));
+                    dialog_box.intersect_exit = true;
+                    sengine->play2D("data/blip.wav");
+
+                    if (dialog_box.hidden)
+                    {
+                        dialog_box.show();
+                    }
+                    else
+                    {
+                        dialog_box.hide();
+                    }
+                }
+            }
+            else if (!dialog_box.exit_button->getTransformedBoundingBox().intersectsWithBox(hand_box))
+            {
+                // exit button released
+                dialog_box.exit_button->setMaterialTexture(0, driver->getTexture("red"));
+                dialog_box.intersect_exit = false;
             }
 
             // Render scene
