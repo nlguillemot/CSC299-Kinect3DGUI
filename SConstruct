@@ -1,6 +1,6 @@
 env = Environment()
 env.Append(CPPFLAGS=['-std=c++0x'])
-env.Append(LIBS=['Irrlicht', 'GL', 'freenect'])
+env.Append(LIBS=['Irrlicht', 'GL', 'freenect', 'IrrKlang'])
 
 debug = ARGUMENTS.get('debug', '0')
 if debug == '1':

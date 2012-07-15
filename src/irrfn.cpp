@@ -1,15 +1,18 @@
 #include "irrfn.hpp"
 #include "global.hpp"
 #include <irrlicht/irrlicht.h>
+#include <irrklang/irrKlang.h>
 #include <libfreenect/libfreenect.h>
 #include <cstdio>
 
 using namespace irr;
+using namespace irrklang;
 
 namespace ng
 {
 
 static IrrlichtDevice* device;
+static ISoundEngine* sengine;
 
 int initialize_irrlicht()
 {
@@ -20,6 +23,12 @@ int initialize_irrlicht()
     }
 
     device->setWindowCaption(L"CSC299-Kinect3DGUI");
+
+    sengine = createIrrKlangDevice();
+    if (!sengine)
+    {
+        return 1;
+    }
 
     return 0;
 }
@@ -189,6 +198,8 @@ struct DialogBox
     scene::IMeshSceneNode* exit_button;
     scene::IMeshSceneNode* menu_bar;
     scene::IMeshSceneNode* main_button;
+
+    bool intersect_main;
 };
 
 core::aabbox3df get_node_bounds_recursively(scene::ISceneNode* node)
@@ -221,6 +232,7 @@ void hook_up_dialog_box(DialogBox* d, scene::ISceneManager* smgr, video::IVideoD
 
     d->main_button = add_rectangular_prism_mesh(smgr, driver, d->root, core::vector3df(width*3/5, height/5, buttondepth), "grey");
     d->main_button->setPosition(core::vector3df(width/5, -height*4/5, -paneldepth));
+    d->intersect_main = false;
 }
 
 template<class T>
@@ -288,6 +300,8 @@ void irr_main()
     scene::ISceneManager* smgr = device->getSceneManager();
     gui::IGUIEnvironment* guienv = device->getGUIEnvironment();
 
+    sengine->play2D("data/plopp.wav");
+
     add_colors_to_irrlicht(driver);
 
     // represents location of hand in 3D space
@@ -327,7 +341,7 @@ void irr_main()
     DialogBox dialog_box;
     hook_up_dialog_box(&dialog_box, smgr, driver);
     core::vector3df dialog_extents = get_node_bounds_recursively(dialog_box.root).getExtent();
-    dialog_box.root->setPosition(core::vector3df(kSCREEN_WIDTH/2 - dialog_extents.X/2, kSCREEN_HEIGHT/2 + dialog_extents.Y/2, 650));
+    dialog_box.root->setPosition(core::vector3df(kSCREEN_WIDTH/2 - dialog_extents.X/2, kSCREEN_HEIGHT/2 + dialog_extents.Y/2, upper_bound/2));
 
     // time stuff
     u32 now = 0, then = 0;
@@ -401,15 +415,20 @@ void irr_main()
             hand_light->setPosition(hand_box.getCenter());
 
             // check for collisions between the hand and GUI elements
-            if (dialog_box.main_button->getTransformedBoundingBox().intersectsWithBox(hand_box))
+            if (dialog_box.main_button->getTransformedBoundingBox().isPointTotalInside(hand_box.getCenter()))
             {
-                dialog_box.main_button->setMaterialTexture(0, driver->getTexture("light_blue"));
+                if (!dialog_box.intersect_main && delta_hand_position.Z > 5)
+                {
+                    dialog_box.main_button->setMaterialTexture(0, driver->getTexture("light_blue"));
+                    dialog_box.intersect_main = true;
+                    sengine->play2D("data/blip.wav");
+                }
             }
-            else
+            else if (!dialog_box.main_button->getTransformedBoundingBox().intersectsWithBox(hand_box))
             {
                 dialog_box.main_button->setMaterialTexture(0, driver->getTexture("grey"));
+                dialog_box.intersect_main = false;
             }
-            
 
             // Render scene
             if (device->isWindowActive())
@@ -452,6 +471,9 @@ void irr_main()
             g_die = true;
         }
     }
+
+    device->drop();
+    sengine->drop();
 }
 
 }
