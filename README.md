@@ -7,6 +7,8 @@ There already exist projects done to play with GUIs using the kinect, otherwise 
 While this demo by Willow Garage is totally awesome, the graphical elements with which the user is interacting are in 2D.
 This project's goal is to see if the functionality can be extended to interacting with 3D window elements.
 
+I went for using libfreenect without using any libraries to detect hands or fingers out of point clouds, so the movement is not perfectly smooth and the precision might be lacking. This is acceptable for a prototype, but if another iteration is done on this project such a library should be used to detect more complex motions.
+
 Tools used:
 
 + Freenect for interfacing with the Kinect - https://github.com/OpenKinect/libfreenect
