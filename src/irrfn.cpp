@@ -361,9 +361,11 @@ void irr_main()
                     }
 
                     hand_target_pos = next_hand_target_pos;
+/*
                     printf("new target: ");
                     print_vector3(hand_target_pos);
                     printf("\n");
+*/
 
                     hand_color.set(255, 0, 255, 0);
                 }
