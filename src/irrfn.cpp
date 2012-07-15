@@ -117,7 +117,7 @@ static void set_aabbox_centre(core::aabbox3d<T>& box, const core::vector3d<K>& c
     box.MaxEdge.set(centre + (extents/2));
 }
 
-scene::IMeshSceneNode* add_rectangular_prism_mesh(scene::ISceneManager* smgr, scene::ISceneNode* parent, const core::vector3df& dim, const video::SColor& c = video::SColor(255, 255, 255, 255))
+scene::IMeshSceneNode* add_rectangular_prism_mesh(scene::ISceneManager* smgr, video::IVideoDriver* driver, scene::ISceneNode* parent, const core::vector3df& dim, const char* color)
 {
     using video::S3DVertex;
 
@@ -132,15 +132,16 @@ scene::IMeshSceneNode* add_rectangular_prism_mesh(scene::ISceneManager* smgr, sc
 5---------6/
 */
     // TODO: Fix u,v coordinates
+    video::SColor white(255,255,255,255);
     const S3DVertex verts[] = {
-        S3DVertex(0, 0, 0, -1, 1, 1, c, 0, 0),
-        S3DVertex(0, 0, dim.Z, -1, 1, -1, c, 0, 0),
-        S3DVertex(dim.X, 0, dim.Z, 1, 1, -1, c, 0, 0),
-        S3DVertex(dim.X, 0, 0, 1, 1, 1, c, 0, 0),
-        S3DVertex(0, -dim.Y, 0, 1, -1, 1, c, 0, 0),
-        S3DVertex(0, -dim.Y, dim.Z, -1, -1, -1, c, 0, 0),
-        S3DVertex(dim.X, -dim.Y, dim.Z, 1, -1, -1, c, 0, 0),
-        S3DVertex(dim.X, -dim.Y, 0, 1, -1, 1, c, 0, 0)
+        S3DVertex(0, 0, 0, -1, 1, 1, white, 0, 0),
+        S3DVertex(0, 0, dim.Z, -1, 1, -1, white, 0, 0),
+        S3DVertex(dim.X, 0, dim.Z, 1, 1, -1, white, 0, 0),
+        S3DVertex(dim.X, 0, 0, 1, 1, 1, white, 0, 0),
+        S3DVertex(0, -dim.Y, 0, 1, -1, 1, white, 0, 0),
+        S3DVertex(0, -dim.Y, dim.Z, -1, -1, -1, white, 0, 0),
+        S3DVertex(dim.X, -dim.Y, dim.Z, 1, -1, -1, white, 0, 0),
+        S3DVertex(dim.X, -dim.Y, 0, 1, -1, 1, white, 0, 0)
     };
 
     const u16 indices[] = {
@@ -155,7 +156,7 @@ scene::IMeshSceneNode* add_rectangular_prism_mesh(scene::ISceneManager* smgr, sc
         1, 5, 6, // front
         1, 6, 2, // front
         5, 4, 7, // bottom
-        5, 7, 6,  // bottom
+        5, 7, 6, // bottom
     };
 
     scene::IMeshBuffer* b = new scene::SMeshBuffer();
@@ -167,6 +168,7 @@ scene::IMeshSceneNode* add_rectangular_prism_mesh(scene::ISceneManager* smgr, sc
 
     scene::IMeshSceneNode* created_node = smgr->addMeshSceneNode(m, parent);
     created_node->setMaterialFlag(video::EMF_LIGHTING, false);
+    created_node->setMaterialTexture(0, driver->getTexture(color));
 
     m->drop();
     b->drop();
@@ -183,7 +185,18 @@ struct DialogBox
     scene::IMeshSceneNode* main_button;
 };
 
-void hook_up_dialog_box(DialogBox* d, scene::ISceneManager* smgr)
+core::aabbox3df get_node_bounds_recursively(scene::ISceneNode* node)
+{
+    core::aabbox3df box = node->getTransformedBoundingBox();
+    core::list<scene::ISceneNode*> children = node->getChildren();
+    for (auto it = children.begin(); it != children.end(); ++it)
+    {
+        box.addInternalBox(get_node_bounds_recursively(*it));
+    }
+    return box;
+}
+
+void hook_up_dialog_box(DialogBox* d, scene::ISceneManager* smgr, video::IVideoDriver* driver)
 {
     const float width = 200;
     const float height = 200;
@@ -192,16 +205,64 @@ void hook_up_dialog_box(DialogBox* d, scene::ISceneManager* smgr)
 
     d->root = smgr->addEmptySceneNode();
 
-    d->panel = add_rectangular_prism_mesh(smgr, d->root, core::vector3df(width, height, paneldepth), video::SColor(255,255,255,255));
+    d->panel = add_rectangular_prism_mesh(smgr, driver, d->root, core::vector3df(width, height, paneldepth), "white");
 
-    d->exit_button = add_rectangular_prism_mesh(smgr, d->root, core::vector3df(width/5, height/5, buttondepth), video::SColor(255,255,0,0));
+    d->exit_button = add_rectangular_prism_mesh(smgr, driver, d->root, core::vector3df(width/5, height/5, buttondepth), "red");
     d->exit_button->setPosition(core::vector3df(width*4/5, 0, -paneldepth));
 
-    d->menu_bar = add_rectangular_prism_mesh(smgr, d->root, core::vector3df(width*4/5, height/5, buttondepth), video::SColor(255,0,0,255));
+    d->menu_bar = add_rectangular_prism_mesh(smgr, driver, d->root, core::vector3df(width*4/5, height/5, buttondepth), "blue");
     d->menu_bar->setPosition(core::vector3df(0,0, -paneldepth));
 
-    d->main_button = add_rectangular_prism_mesh(smgr, d->root, core::vector3df(width*3/5, height/5, buttondepth), video::SColor(255,100,100,100));
+    d->main_button = add_rectangular_prism_mesh(smgr, driver, d->root, core::vector3df(width*3/5, height/5, buttondepth), "grey");
     d->main_button->setPosition(core::vector3df(width/5, -height*4/5, -paneldepth));
+}
+
+template<class T>
+void print_vector3(const core::vector3d<T>& v)
+{
+    printf("{ %f, %f, %f }", v.X, v.Y, v.Z);
+}
+
+template<class T>
+void print_aabbox(const core::aabbox3d<T>& bbox)
+{
+    printf("{ MinEdge: ");
+    print_vector3(bbox.MinEdge);
+    printf(" MaxEdge: ");
+    print_vector3(bbox.MaxEdge);
+    printf(" }");
+}
+
+void add_colors_to_irrlicht(video::IVideoDriver* driver)
+{
+    using video::SColor;
+
+    const char* color_names[] = {
+        "red",
+        "green",
+        "blue",
+        "white",
+        "black",
+        "grey",
+        "light_blue",
+    };
+
+    SColor colors[] = {
+        SColor(255,255,0,0),
+        SColor(255,0,255,0),
+        SColor(255,0,0,255),
+        SColor(255,255,255,255),
+        SColor(255,0,0,0),
+        SColor(255,100,100,100),
+        SColor(255,173, 216, 230),
+    };
+
+    for (size_t i = 0; i < sizeof(colors)/sizeof(*colors); ++i)
+    {
+        video::IImage* c = driver->createImage(video::ECF_A8R8G8B8, core::dimension2du(128,128));
+        c->fill(colors[i]);
+        driver->addTexture(color_names[i],c);
+    }
 }
 
 void irr_main()
@@ -209,6 +270,8 @@ void irr_main()
     video::IVideoDriver* driver = device->getVideoDriver();
     scene::ISceneManager* smgr = device->getSceneManager();
     gui::IGUIEnvironment* guienv = device->getGUIEnvironment();
+
+    add_colors_to_irrlicht(driver);
 
     // represents location of hand in 3D space
     core::aabbox3df hand_box(-10, -10, -10, 10, 10, 10);
@@ -220,11 +283,12 @@ void irr_main()
     // world units per second
     float hand_tween_speed = 12.0f;
 
-    // map 3D space to freenect depth space
     scene::ICameraSceneNode* cam;
 #if 1
+    // map 3D space to freenect depth space
     cam = smgr->addCameraSceneNode(0, core::vector3df(kSCREEN_WIDTH/2, kSCREEN_HEIGHT/2,0), core::vector3df(kSCREEN_WIDTH/2, kSCREEN_HEIGHT/2, 1));
 #else
+    // FPS camera for easier debugging of graphics
     cam = smgr->addCameraSceneNodeFPS();
 #endif
 
@@ -235,9 +299,11 @@ void irr_main()
     // bounds for depth filtering
     float lower_bound = 500, upper_bound = 800;
 
+    // initialize dialog box
     DialogBox dialog_box;
-    hook_up_dialog_box(&dialog_box, smgr);
-    dialog_box.root->setPosition(core::vector3df(kSCREEN_WIDTH/2,kSCREEN_HEIGHT/2,200));
+    hook_up_dialog_box(&dialog_box, smgr, driver);
+    core::vector3df dialog_extents = get_node_bounds_recursively(dialog_box.root).getExtent();
+    dialog_box.root->setPosition(core::vector3df(kSCREEN_WIDTH/2 - dialog_extents.X/2, kSCREEN_HEIGHT/2 + dialog_extents.Y/2, 650));
 
     // time stuff
     u32 now = 0, then = 0;
@@ -284,7 +350,6 @@ void irr_main()
 
             // update hand position
             core::vector3df hand_distance_to_target = hand_target_pos - hand_box.getCenter();
-
             core::vector3df delta_hand_position = hand_distance_to_target;
             delta_hand_position.normalize();
             delta_hand_position *= hand_tween_speed;
@@ -300,6 +365,16 @@ void irr_main()
                 set_aabbox_centre(hand_box, hand_target_pos);
             }
 
+            // check for collisions between the hand and GUI elements
+            if (dialog_box.main_button->getTransformedBoundingBox().intersectsWithBox(hand_box))
+            {
+                dialog_box.main_button->setMaterialTexture(0, driver->getTexture("light_blue"));
+            }
+            else
+            {
+                dialog_box.main_button->setMaterialTexture(0, driver->getTexture("grey"));
+            }
+            
 
             // Render scene
             if (device->isWindowActive())
@@ -328,11 +403,12 @@ void irr_main()
 
             // Throw all collected buffers back in the pool
             g_depth_buffer_pool.lock();
-            for (DepthBuffer* b : bufs)
+            for (size_t i = 0; i < bufs.size(); ++i)
             {
-                g_depth_buffer_pool.deallocate(b);
+                g_depth_buffer_pool.deallocate(bufs[i]);
             }
             g_depth_buffer_pool.unlock();
+            bufs.clear();
         }
         else
         {
