@@ -201,6 +201,7 @@ struct DialogBox
 
     bool intersect_main;
     bool intersect_exit;
+    bool intersect_menu;
     bool hidden;
 
     void hide()
@@ -331,6 +332,8 @@ void irr_main()
 
     // hand is always tweened toward this point
     core::vector3df hand_target_pos(0,0,0);
+    bool holding_window = false;
+    int window_release_timer = 0;
 
     // world units per second
     float hand_tween_speed = 12.0f;
@@ -479,6 +482,36 @@ void irr_main()
                 // exit button released
                 dialog_box.exit_button->setMaterialTexture(0, driver->getTexture("red"));
                 dialog_box.intersect_exit = false;
+            }
+
+            // update state of top bar
+            if (dialog_box.menu_bar->getTransformedBoundingBox().isPointTotalInside(hand_box.getCenter()))
+            {
+                if (!dialog_box.intersect_menu && delta_hand_position.Z > 5)
+                {
+                    // exit button pressed
+                    dialog_box.menu_bar->setMaterialTexture(0, driver->getTexture("grey"));
+                    dialog_box.intersect_menu = true;
+                    sengine->play2D("data/blip.wav");
+                    holding_window = true;
+                    window_release_timer = 2000;
+                }
+            }
+            // TODO: Fix release condition
+            if (window_release_timer < 0)
+            {
+                // exit button released
+                dialog_box.menu_bar->setMaterialTexture(0, driver->getTexture("blue"));
+                dialog_box.intersect_menu = false;
+                holding_window = false;
+            }
+
+            if (holding_window)
+            {
+                core::vector3df extents = dialog_box.menu_bar->getTransformedBoundingBox().getExtent();
+                dialog_box.root->setPosition(hand_box.getCenter() - extents);
+
+                window_release_timer -= dt;
             }
 
             // Render scene
