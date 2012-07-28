@@ -334,6 +334,7 @@ void irr_main()
     core::vector3df hand_target_pos(0,0,0);
     bool holding_window = false;
     int window_release_timer = 0;
+    int window_grab_cooldown = 0;
 
     // world units per second
     float hand_tween_speed = 12.0f;
@@ -485,7 +486,7 @@ void irr_main()
             }
 
             // update state of top bar
-            if (dialog_box.menu_bar->getTransformedBoundingBox().isPointTotalInside(hand_box.getCenter()))
+            if (window_grab_cooldown <= 0 && dialog_box.menu_bar->getTransformedBoundingBox().isPointTotalInside(hand_box.getCenter()))
             {
                 if (!dialog_box.intersect_menu && delta_hand_position.Z > 5)
                 {
@@ -495,6 +496,7 @@ void irr_main()
                     sengine->play2D("data/blip.wav");
                     holding_window = true;
                     window_release_timer = 2000;
+                    window_grab_cooldown = 2000;
                 }
             }
             // TODO: Fix release condition
@@ -509,9 +511,12 @@ void irr_main()
             if (holding_window)
             {
                 core::vector3df extents = dialog_box.menu_bar->getTransformedBoundingBox().getExtent();
-                dialog_box.root->setPosition(hand_box.getCenter() - extents);
+                dialog_box.root->setPosition(hand_box.getCenter() - core::vector3df(extents.X/2, 0, 0));
 
                 window_release_timer -= dt;
+            }
+            else if (window_grab_cooldown > 0) {
+                window_grab_cooldown -= dt;
             }
 
             // Render scene
