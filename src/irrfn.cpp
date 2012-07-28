@@ -4,6 +4,7 @@
 #include <irrklang/irrKlang.h>
 #include <libfreenect/libfreenect.h>
 #include <cstdio>
+#include <iostream>
 
 using namespace irr;
 using namespace irrklang;
@@ -203,6 +204,11 @@ struct DialogBox
     bool intersect_exit;
     bool intersect_menu;
     bool hidden;
+
+    DialogBox(): root(0), panel(0), exit_button(0), menu_bar(0), main_button(0),
+    intersect_main(false), intersect_exit(false), intersect_menu(false), hidden(false)
+    {
+    }
 
     void hide()
     {
@@ -496,7 +502,7 @@ void irr_main()
                     sengine->play2D("data/blip.wav");
                     holding_window = true;
                     window_release_timer = 2000;
-                    window_grab_cooldown = 2000;
+                    window_grab_cooldown = 1000;
                 }
             }
             // TODO: Fix release condition
@@ -511,9 +517,18 @@ void irr_main()
             if (holding_window)
             {
                 core::vector3df extents = dialog_box.menu_bar->getTransformedBoundingBox().getExtent();
+                core::vector3df oldpos = dialog_box.root->getPosition();
                 dialog_box.root->setPosition(hand_box.getCenter() - core::vector3df(extents.X/2, 0, 0));
+                core::vector3df newpos = dialog_box.root->getPosition();
 
-                window_release_timer -= dt;
+                if ((newpos - oldpos).getLengthSQ() <= 135) {
+                    window_release_timer -= dt;
+                } else {
+                    std::cout << "refreshing release timer" << std::endl;
+                    window_release_timer += dt;
+                    if (window_release_timer > 2000)
+                        window_release_timer = 2000;
+                }
             }
             else if (window_grab_cooldown > 0) {
                 window_grab_cooldown -= dt;
